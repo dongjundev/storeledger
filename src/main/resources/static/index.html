@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Store Ledger 매출·마진 관리</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <h1>Store Ledger <span>매출 · 마진 관리</span></h1>
+  <nav class="tabs">
+    <button type="button" class="tab active" data-view="dashboard">대시보드</button>
+    <button type="button" class="tab" data-view="products">상품</button>
+    <button type="button" class="tab" data-view="sales">판매 기록</button>
+  </nav>
+</header>
+
+<main>
+  <!-- 대시보드: 일/주/월/년 매출·이익 그래프 -->
+  <section id="view-dashboard" class="view">
+    <div class="filters">
+      <div class="segmented" id="period-buttons">
+        <button type="button" data-period="DAILY" class="active">일</button>
+        <button type="button" data-period="WEEKLY">주</button>
+        <button type="button" data-period="MONTHLY">월</button>
+        <button type="button" data-period="YEARLY">년</button>
+      </div>
+      <label>시작 <input type="date" id="dash-from"></label>
+      <label>종료 <input type="date" id="dash-to"></label>
+    </div>
+
+    <div class="tiles">
+      <div class="tile"><div class="tile-label">총 매출</div><div class="tile-value" id="tile-revenue">–</div></div>
+      <div class="tile"><div class="tile-label">총 이익</div><div class="tile-value" id="tile-profit">–</div></div>
+      <div class="tile"><div class="tile-label">판매 수량</div><div class="tile-value" id="tile-quantity">–</div></div>
+      <div class="tile"><div class="tile-label">평균 마진율</div><div class="tile-value" id="tile-rate">–</div></div>
+    </div>
+
+    <div class="card">
+      <h2 id="chart-title">일별 매출 · 이익</h2>
+      <div class="chart-wrap"><canvas id="sales-chart" aria-label="기간별 매출과 이익 막대 그래프"></canvas></div>
+      <details class="table-view">
+        <summary>표로 보기</summary>
+        <div class="table-scroll">
+          <table id="summary-table">
+            <thead><tr><th>기간</th><th class="num">매출</th><th class="num">이익</th><th class="num">수량</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <!-- 상품: 단가·마진 계산 -->
+  <section id="view-products" class="view" hidden>
+    <div class="card">
+      <h2 id="product-form-title">상품 등록</h2>
+      <form id="product-form" class="form-grid" autocomplete="off">
+        <label>상품명 <input name="name" required maxlength="100" placeholder="예: 세라믹 머그컵"></label>
+        <label>판매가 (원) <input name="sellingPrice" type="number" min="0" step="1" required></label>
+        <label>원가 · 매입 단가 (원) <input name="costPrice" type="number" min="0" step="1" required></label>
+        <label>개당 배송비 · 판매자 부담 (원) <input name="shippingCost" type="number" min="0" step="1" value="0"></label>
+        <label>개당 기타 비용 · 포장 등 (원) <input name="otherCost" type="number" min="0" step="1" value="0"></label>
+        <label>수수료율 (%) <input name="feeRate" type="number" min="0" max="100" step="0.01" value="5.63"></label>
+        <p class="hint">수수료율 기본값 5.63% = 네이버 주문관리 수수료(신용카드 3.63%) + 네이버쇼핑 매출연동 수수료 2%. 판매자 등급·결제수단에 맞게 조정하세요.</p>
+        <p class="preview" id="margin-preview">판매가와 원가를 입력하면 수수료·마진이 계산됩니다.</p>
+        <div class="actions">
+          <button type="submit" class="primary">저장</button>
+          <button type="button" class="ghost" id="product-cancel" hidden>취소</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>상품 목록</h2>
+      <div class="table-scroll">
+        <table id="product-table">
+          <thead>
+            <tr>
+              <th>상품명</th><th class="num">판매가</th><th class="num">원가</th><th class="num">배송비</th>
+              <th class="num">기타</th><th class="num">수수료율</th><th class="num">수수료</th>
+              <th class="num">개당 마진</th><th class="num">마진율</th><th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- 판매 기록 -->
+  <section id="view-sales" class="view" hidden>
+    <div class="card">
+      <h2 id="sale-form-title">판매 기록 추가</h2>
+      <form id="sale-form" class="form-grid" autocomplete="off">
+        <label>상품 <select name="productId" required></select></label>
+        <label>판매일 <input name="saleDate" type="date" required></label>
+        <label>수량 <input name="quantity" type="number" min="1" step="1" value="1" required></label>
+        <label>판매 단가 (원) <input name="unitPrice" type="number" min="0" step="1" required></label>
+        <div class="actions">
+          <button type="submit" class="primary">저장</button>
+          <button type="button" class="ghost" id="sale-cancel" hidden>취소</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>판매 내역</h2>
+        <div class="filters inline">
+          <label>시작 <input type="date" id="sales-from"></label>
+          <label>종료 <input type="date" id="sales-to"></label>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table id="sale-table">
+          <thead>
+            <tr><th>판매일</th><th>상품</th><th class="num">수량</th><th class="num">단가</th><th class="num">매출</th><th class="num">이익</th><th></th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="toast" class="toast" role="status" hidden></div>
+
+<script src="vendor/chart.umd.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
