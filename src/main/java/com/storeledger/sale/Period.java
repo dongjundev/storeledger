@@ -2,6 +2,7 @@ package com.storeledger.sale;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.time.temporal.IsoFields;
 import java.time.temporal.TemporalAdjusters;
 
@@ -38,6 +39,17 @@ public enum Period {
             case MONTHLY -> String.format("%d-%02d", bucketStart.getYear(), bucketStart.getMonthValue());
             case YEARLY -> String.valueOf(bucketStart.getYear());
         };
+    }
+
+    /** from~to 를 이 단위로 나눈 구간 수 (양 끝 구간 포함). */
+    public long bucketCount(LocalDate from, LocalDate to) {
+        ChronoUnit unit = switch (this) {
+            case DAILY -> ChronoUnit.DAYS;
+            case WEEKLY -> ChronoUnit.WEEKS;
+            case MONTHLY -> ChronoUnit.MONTHS;
+            case YEARLY -> ChronoUnit.YEARS;
+        };
+        return unit.between(bucketStart(from), bucketStart(to)) + 1;
     }
 
     /** 시작일 생략 시 기본 조회 범위: 최근 30일 / 12주 / 12개월 / 5년. */

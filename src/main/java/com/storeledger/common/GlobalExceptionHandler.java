@@ -1,5 +1,6 @@
 package com.storeledger.common;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -28,6 +29,13 @@ public class GlobalExceptionHandler {
             MissingServletRequestParameterException.class})
     public ProblemDetail badRequest(Exception e) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "요청 형식이 올바르지 않습니다.");
+    }
+
+    /** 두 번 연달아 저장하는 등으로 DB 규칙(이름 중복 등)에 걸린 경우. 저장은 안 됐으니 500 대신 409로 알린다. */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ProblemDetail conflict(DataIntegrityViolationException e) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT,
+                "다른 데이터와 겹쳐 저장하지 못했습니다. 목록을 새로 고친 뒤 다시 확인해 주세요.");
     }
 
     @ExceptionHandler(ResponseStatusException.class)

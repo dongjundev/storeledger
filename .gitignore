@@ -37,4 +37,10 @@ out/
 .vscode/
 
 ### H2 file database
-data/
+/data/
+
+### Local overrides (real store name etc.)
+/config/
+
+### macOS
+.DS_Store

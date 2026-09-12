@@ -20,6 +20,9 @@ public class SaleService {
 
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 
+    /** 한 번에 만드는 구간 수 상한. 연도를 입력하다 만 날짜(예: 0002년)로 수십만 개 구간을 만들지 않게 막는다. */
+    static final int MAX_POINTS = 1_000;
+
     private final SaleRepository sales;
     private final ProductService products;
 
@@ -60,6 +63,10 @@ public class SaleService {
         LocalDate[] range = resolveRange(period, from, to);
         from = range[0];
         to = range[1];
+        if (period.bucketCount(from, to) > MAX_POINTS) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "조회 기간이 너무 깁니다. 한 번에 "
+                    + MAX_POINTS + "개 구간까지 볼 수 있으니 기간을 줄이거나 주·월·년 단위로 보세요.");
+        }
 
         Map<LocalDate, long[]> buckets = new HashMap<>(); // [매출, 이익, 수량]
         for (Sale sale : sales.findBetween(from, to)) {

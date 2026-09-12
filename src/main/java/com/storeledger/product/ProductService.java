@@ -1,5 +1,7 @@
 package com.storeledger.product;
 
+import com.storeledger.category.Category;
+import com.storeledger.category.CategoryService;
 import com.storeledger.sale.SaleRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -14,10 +16,12 @@ public class ProductService {
 
     private final ProductRepository products;
     private final SaleRepository sales;
+    private final CategoryService categories;
 
-    public ProductService(ProductRepository products, SaleRepository sales) {
+    public ProductService(ProductRepository products, SaleRepository sales, CategoryService categories) {
         this.products = products;
         this.sales = sales;
+        this.categories = categories;
     }
 
     @Transactional(readOnly = true)
@@ -31,15 +35,17 @@ public class ProductService {
     }
 
     public ProductResponse create(ProductRequest request) {
-        Product product = new Product(request.name(), request.sellingPrice(), request.costPrice(),
-                request.shippingCost(), request.otherCost(), request.feeRate());
+        Product product = new Product(request.name(), category(request), request.sellingPrice(), request.costPrice(),
+                request.shippingCost(), request.buyerShippingFee(), request.otherCost(),
+                request.orderFeeRate(), request.salesFeeRate());
         return ProductResponse.from(products.save(product));
     }
 
     public ProductResponse update(Long id, ProductRequest request) {
         Product product = get(id);
-        product.update(request.name(), request.sellingPrice(), request.costPrice(),
-                request.shippingCost(), request.otherCost(), request.feeRate());
+        product.update(request.name(), category(request), request.sellingPrice(), request.costPrice(),
+                request.shippingCost(), request.buyerShippingFee(), request.otherCost(),
+                request.orderFeeRate(), request.salesFeeRate());
         return ProductResponse.from(product);
     }
 
@@ -50,6 +56,10 @@ public class ProductService {
                     "판매 기록이 있는 상품은 삭제할 수 없습니다. 판매 기록을 먼저 삭제해 주세요.");
         }
         products.delete(product);
+    }
+
+    private Category category(ProductRequest request) {
+        return request.categoryId() == null ? null : categories.get(request.categoryId());
     }
 
     public Product get(Long id) {

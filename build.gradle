@@ -5,7 +5,7 @@ plugins {
 }
 
 group = 'com.storeledger'
-version = '0.0.1-SNAPSHOT'
+version = '1.0.0'
 description = 'Store Ledger smart store sales and margin platform'
 
 java {
@@ -31,6 +31,18 @@ dependencies {
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
+def desktopTestRoot = layout.buildDirectory.dir('desktop-test')
+
 tasks.named('test') {
 	useJUnitPlatform()
+	// 테스트용 설정(src/test/resources/config)만 덧붙이고, 프로젝트 루트의 로컬 설정(./config)은 읽지 않는다.
+	// 거기에 DB 주소를 적어 두면 테스트의 create-drop 이 실제 장부를 지울 수 있다
+	// 세미콜론으로 한 묶음이어야 desktop 같은 프로필 설정이 테스트용 설정보다 우선한다 (스프링 기본값과 같은 방식)
+	systemProperty 'spring.config.location', 'optional:classpath:/;optional:classpath:/config/'
+	// DesktopProfileTest 가 실행마다 빈 폴더를 쓰게 한다 (이전 실행이 남긴 로그로 통과하지 않도록)
+	doFirst {
+		def root = desktopTestRoot.get().asFile
+		root.deleteDir()
+		systemProperty 'storeledger.desktop-test.home', new File(root, System.currentTimeMillis().toString()).absolutePath
+	}
 }

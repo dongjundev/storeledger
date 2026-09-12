@@ -47,6 +47,15 @@ class PeriodTest {
     }
 
     @Test
+    void 구간_수는_양_끝_구간을_포함한다() {
+        assertEquals(1, Period.DAILY.bucketCount(FRIDAY, FRIDAY));
+        assertEquals(30, Period.DAILY.bucketCount(LocalDate.of(2026, 8, 6), FRIDAY));
+        assertEquals(2, Period.WEEKLY.bucketCount(LocalDate.of(2026, 8, 30), LocalDate.of(2026, 8, 31))); // 일요일, 다음 월요일
+        assertEquals(12, Period.MONTHLY.bucketCount(LocalDate.of(2025, 10, 31), FRIDAY));
+        assertEquals(5, Period.YEARLY.bucketCount(LocalDate.of(2022, 12, 31), FRIDAY));
+    }
+
+    @Test
     void 연초의_주는_ISO_주기준_연도를_따른다() {
         // 2027-01-01(금)은 2026년 53주차에 속한다
         LocalDate monday = Period.WEEKLY.bucketStart(LocalDate.of(2027, 1, 1));

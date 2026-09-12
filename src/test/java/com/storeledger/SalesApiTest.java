@@ -22,9 +22,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Transactional
 class SalesApiTest {
 
-    // 판매가 19,900 / 원가 8,000 / 배송비 3,000 / 기타 500 / 수수료 5.63% → 수수료 1,120, 개당 마진 7,280
+    // 판매가 19,900 / 원가 8,000 / 택배비 3,000 / 기타 500 / 수수료 3.63% + 2.00% → 수수료 1,120, 개당 마진 7,280
     private static final String MUG = """
-            {"name":"머그컵","sellingPrice":19900,"costPrice":8000,"shippingCost":3000,"otherCost":500,"feeRate":5.63}
+            {"name":"머그컵","sellingPrice":19900,"costPrice":8000,"shippingCost":3000,"otherCost":500,
+             "orderFeeRate":3.63,"salesFeeRate":2.00}
             """;
 
     @Autowired
@@ -34,19 +35,49 @@ class SalesApiTest {
     void 상품을_등록하면_수수료와_마진이_계산된다() throws Exception {
         mvc.perform(post("/api/products").contentType(MediaType.APPLICATION_JSON).content(MUG))
                 .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.buyerShippingFee").value(0))
+                .andExpect(jsonPath("$.orderFeeRate").value(3.63))
+                .andExpect(jsonPath("$.salesFeeRate").value(2.0))
                 .andExpect(jsonPath("$.fee").value(1120))
                 .andExpect(jsonPath("$.margin").value(7280))
                 .andExpect(jsonPath("$.marginRate").value(36.6));
     }
 
     @Test
-    void 마진_미리보기는_수수료율_생략시_기본값을_쓴다() throws Exception {
+    void 수수료율을_생략하면_주문관리와_판매_기본값을_쓴다() throws Exception {
+        // 기본값 1.95% + 3.00%: 19,900 × 4.95% = 985.05 → 985, 마진 19,900 − 8,000 − 3,000 − 500 − 985 = 7,415
         mvc.perform(post("/api/margin").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"sellingPrice\":19900,\"costPrice\":8000,\"shippingCost\":3000,\"otherCost\":500}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.fee").value(1120))
-                .andExpect(jsonPath("$.margin").value(7280))
-                .andExpect(jsonPath("$.marginRate").value(36.6));
+                .andExpect(jsonPath("$.fee").value(985))
+                .andExpect(jsonPath("$.margin").value(7415))
+                .andExpect(jsonPath("$.marginRate").value(37.3));
+
+        mvc.perform(post("/api/products").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"볼펜\",\"sellingPrice\":3000,\"costPrice\":800}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.orderFeeRate").value(1.95))
+                .andExpect(jsonPath("$.salesFeeRate").value(3.0));
+    }
+
+    @Test
+    void 구매자_배송비는_이익에만_들어가고_매출에는_들어가지_않는다() throws Exception {
+        // 머그컵을 구매자 배송비 3,000원으로: 수수료 1,120 + 109 = 1,229, 개당 마진 10,171
+        String body = mvc.perform(post("/api/products").contentType(MediaType.APPLICATION_JSON)
+                        .content(MUG.replace("\"otherCost\":500", "\"otherCost\":500,\"buyerShippingFee\":3000")))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.buyerShippingFee").value(3000))
+                .andExpect(jsonPath("$.fee").value(1229))
+                .andExpect(jsonPath("$.margin").value(10171))
+                .andReturn().getResponse().getContentAsString();
+        long productId = JsonPath.parse(body).read("$.id", Long.class);
+
+        createSale(productId, "2026-09-04", 2, null);
+
+        mvc.perform(get("/api/sales/summary").param("period", "DAILY").param("from", "2026-09-04").param("to", "2026-09-04"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalRevenue").value(39800))   // 19,900 × 2 (배송비 제외)
+                .andExpect(jsonPath("$.totalProfit").value(20342));   // 10,171 × 2
     }
 
     @Test
@@ -120,6 +151,47 @@ class SalesApiTest {
         mvc.perform(get("/api/sales/summary").param("period", "YEARLY"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.points.length()").value(5));
+    }
+
+    @Test
+    void 구간이_1000개를_넘는_조회는_400이고_큰_단위로는_볼_수_있다() throws Exception {
+        // 2024-01-01 ~ 2026-09-26 은 1,000일, 하루 더 늘리면 1,001일
+        mvc.perform(get("/api/sales/summary").param("period", "DAILY").param("from", "2024-01-01").param("to", "2026-09-26"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.points.length()").value(1000));
+        mvc.perform(get("/api/sales/summary").param("period", "DAILY").param("from", "2024-01-01").param("to", "2026-09-27"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.startsWith("조회 기간이 너무 깁니다.")));
+        // 날짜를 입력하다 만 연도(0002년)로 들어온 요청
+        mvc.perform(get("/api/sales/summary").param("period", "DAILY").param("from", "0002-09-12").param("to", "2026-09-12"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(get("/api/sales/summary").param("period", "MONTHLY").param("from", "2000-01-01").param("to", "2026-09-12"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.points.length()").value(321));
+    }
+
+    @Test
+    void 금액은_1억원_이하_수수료율은_소수_둘째_자리까지만_받는다() throws Exception {
+        mvc.perform(post("/api/products").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"고가\",\"sellingPrice\":1500000000,\"costPrice\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("sellingPrice: 판매가는 1억 원 이하여야 합니다"));
+        mvc.perform(post("/api/margin").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sellingPrice\":10000,\"costPrice\":1,\"orderFeeRate\":1.947}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("orderFeeRate: 주문관리 수수료율은 소수 둘째 자리까지 입력하세요"));
+    }
+
+    @Test
+    void 모르는_필드나_100퍼센트를_넘는_수수료율_합계는_400() throws Exception {
+        // 업데이트 전에 캐시된 옛 화면은 feeRate 를 보낸다. 조용히 무시하면 수수료율이 기본값으로 바뀐 채 저장된다
+        mvc.perform(post("/api/products").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"옛 화면\",\"sellingPrice\":10000,\"costPrice\":1,\"feeRate\":6.6}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/api/margin").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sellingPrice\":1000,\"costPrice\":1,\"orderFeeRate\":60,\"salesFeeRate\":41}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("합계는 100% 이하")));
     }
 
     @Test
