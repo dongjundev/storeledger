@@ -10,7 +10,7 @@
 <header class="topbar">
   <h1><span id="brand">Store Ledger</span> <span class="subtitle">매출 · 마진 관리</span></h1>
   <nav class="tabs">
-    <button type="button" class="tab active" data-view="dashboard">대시보드</button>
+    <button type="button" class="tab active" data-view="dashboard" aria-current="page">대시보드</button>
     <button type="button" class="tab" data-view="products">상품</button>
     <button type="button" class="tab" data-view="sales">판매 기록</button>
     <button type="button" class="tab" data-view="categories">카테고리</button>
@@ -22,10 +22,10 @@
   <section id="view-dashboard" class="view">
     <div class="filters">
       <div class="segmented" id="period-buttons">
-        <button type="button" data-period="DAILY" class="active">일</button>
-        <button type="button" data-period="WEEKLY">주</button>
-        <button type="button" data-period="MONTHLY">월</button>
-        <button type="button" data-period="YEARLY">년</button>
+        <button type="button" data-period="DAILY" class="active" aria-pressed="true">일</button>
+        <button type="button" data-period="WEEKLY" aria-pressed="false">주</button>
+        <button type="button" data-period="MONTHLY" aria-pressed="false">월</button>
+        <button type="button" data-period="YEARLY" aria-pressed="false">년</button>
       </div>
       <label>시작 <input type="date" id="dash-from" min="2000-01-01" max="2099-12-31"></label>
       <label>종료 <input type="date" id="dash-to" min="2000-01-01" max="2099-12-31"></label>
@@ -46,6 +46,23 @@
         <div class="table-scroll">
           <table id="summary-table">
             <thead><tr><th>기간</th><th class="num">매출</th><th class="num">이익</th><th class="num">수량</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </details>
+    </div>
+
+    <div class="card">
+      <h2>카테고리별 매출</h2>
+      <div class="chart-wrap pie"><canvas id="category-chart" aria-label="카테고리별 매출 비중 원 그래프"></canvas></div>
+      <p class="empty" id="category-empty" hidden>이 기간에는 판매 기록이 없습니다.</p>
+      <details class="table-view">
+        <summary>표로 보기</summary>
+        <div class="table-scroll">
+          <table id="category-sales-table">
+            <thead>
+              <tr><th>카테고리</th><th class="num">매출</th><th class="num">비중</th><th class="num">이익</th><th class="num">수량</th></tr>
+            </thead>
             <tbody></tbody>
           </table>
         </div>

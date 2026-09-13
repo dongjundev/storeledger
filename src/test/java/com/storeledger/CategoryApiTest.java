@@ -85,16 +85,24 @@ class CategoryApiTest {
 
     @Test
     void 이름은_대소문자_구분없이_겹칠_수_없다() throws Exception {
+        // 409 를 받으면 트랜잭션에 롤백 표시가 걸리므로, 뒤에 다른 저장을 붙이지 않는다
         mvc.perform(post("/api/categories").contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"pet\"}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.detail").value("이미 있는 카테고리입니다: pet"));
+    }
 
+    @Test
+    void 이름을_바꿀_때도_겹치면_막고_자기_이름은_허용한다() throws Exception {
         long id = createCategory("문구");
-        mvc.perform(put("/api/categories/" + id).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"KITCHEN\"}"))
-                .andExpect(status().isConflict());
+
         mvc.perform(put("/api/categories/" + id).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"문구\"}"))
                 .andExpect(status().isOk()); // 자기 이름 그대로 저장은 허용
+        mvc.perform(put("/api/categories/" + id).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"KITCHEN\"}"))
+                .andExpect(status().isConflict());
+    }
 
+    @Test
+    void 빈_이름은_400() throws Exception {
         mvc.perform(post("/api/categories").contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"   \"}"))
                 .andExpect(status().isBadRequest());
     }

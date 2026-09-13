@@ -44,7 +44,9 @@ class DesktopProfileTest {
     void localhost로_온_요청만_받고_H2_콘솔은_꺼져_있다() throws Exception {
         mvc.perform(get("/api/settings")).andExpect(status().isOk());                                  // Host: localhost
         mvc.perform(get("/api/settings").header("Host", "127.0.0.1:28080")).andExpect(status().isOk());
+        mvc.perform(get("/api/settings").header("Host", "LOCALHOST:28080")).andExpect(status().isOk());          // 대소문자 무시
         mvc.perform(get("/api/settings").header("Host", "evil.example:28080")).andExpect(status().isForbidden()); // DNS 리바인딩
-        mvc.perform(get("/h2-console/")).andExpect(status().isNotFound());
+        // MockMvc 는 H2 콘솔 서블릿을 거치지 않아 404 만 보이므로, 설정값 자체를 확인한다
+        assertEquals("false", env.getProperty("spring.h2.console.enabled"));
     }
 }

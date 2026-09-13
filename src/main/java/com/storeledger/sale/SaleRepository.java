@@ -10,7 +10,7 @@ import java.util.List;
 public interface SaleRepository extends JpaRepository<Sale, Long> {
 
     @Query("""
-            select s from Sale s join fetch s.product
+            select s from Sale s join fetch s.product p left join fetch p.category
             where s.saleDate between :fromDate and :toDate
             order by s.saleDate desc, s.id desc
             """)

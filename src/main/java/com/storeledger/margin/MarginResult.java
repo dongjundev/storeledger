@@ -23,6 +23,12 @@ public record MarginResult(int fee, int margin, BigDecimal marginRate) {
 
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
 
+    /** 두 수수료율 합계가 100% 이하인지. 아주 큰 값은 더하기 전에 걸러, 계산이 터지는 대신 400으로 응답하게 한다. */
+    public static boolean feeRatesWithinLimit(BigDecimal orderFeeRate, BigDecimal salesFeeRate) {
+        return orderFeeRate.compareTo(HUNDRED) <= 0 && salesFeeRate.compareTo(HUNDRED) <= 0
+                && orderFeeRate.add(salesFeeRate).compareTo(HUNDRED) <= 0;
+    }
+
     public static MarginResult of(int sellingPrice, int costPrice, int shippingCost, int buyerShippingFee, int otherCost,
                                   BigDecimal orderFeeRate, BigDecimal salesFeeRate) {
         int fee = percentOf(sellingPrice, orderFeeRate.add(salesFeeRate)) + percentOf(buyerShippingFee, orderFeeRate);

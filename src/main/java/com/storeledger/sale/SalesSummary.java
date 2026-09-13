@@ -10,5 +10,6 @@ public record SalesSummary(
         long totalRevenue,
         long totalProfit,
         long totalQuantity,
-        List<SummaryPoint> points) {
+        List<SummaryPoint> points,
+        List<CategorySales> categories) {
 }

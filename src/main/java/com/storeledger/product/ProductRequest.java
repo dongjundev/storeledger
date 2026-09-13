@@ -35,6 +35,7 @@ public record ProductRequest(
         @Digits(integer = 3, fraction = 2, message = "판매 수수료율은 소수 둘째 자리까지 입력하세요") BigDecimal salesFeeRate) {
 
     public ProductRequest {
+        if (name != null) name = name.strip();
         if (shippingCost == null) shippingCost = 0;
         if (buyerShippingFee == null) buyerShippingFee = 0;
         if (otherCost == null) otherCost = 0;
@@ -44,6 +45,6 @@ public record ProductRequest(
 
     @AssertTrue(message = "주문관리와 판매 수수료율 합계는 100% 이하여야 합니다")
     public boolean isFeeRateTotalValid() {
-        return orderFeeRate.add(salesFeeRate).compareTo(BigDecimal.valueOf(100)) <= 0;
+        return MarginResult.feeRatesWithinLimit(orderFeeRate, salesFeeRate);
     }
 }

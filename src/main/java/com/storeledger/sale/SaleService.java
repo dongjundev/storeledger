@@ -1,5 +1,6 @@
 package com.storeledger.sale;
 
+import com.storeledger.category.Category;
 import com.storeledger.product.Product;
 import com.storeledger.product.ProductService;
 import org.springframework.http.HttpStatus;
@@ -10,6 +11,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -68,12 +70,22 @@ public class SaleService {
                     + MAX_POINTS + "개 구간까지 볼 수 있으니 기간을 줄이거나 주·월·년 단위로 보세요.");
         }
 
-        Map<LocalDate, long[]> buckets = new HashMap<>(); // [매출, 이익, 수량]
+        Map<LocalDate, long[]> buckets = new HashMap<>();     // 구간별 [매출, 이익, 수량]
+        Map<Long, long[]> byCategory = new HashMap<>();        // 카테고리별 [매출, 이익, 수량], null 키는 미분류
+        Map<Long, String> categoryNames = new HashMap<>();
         for (Sale sale : sales.findBetween(from, to)) {
             long[] acc = buckets.computeIfAbsent(period.bucketStart(sale.getSaleDate()), k -> new long[3]);
             acc[0] += sale.revenue();
             acc[1] += sale.profit();
             acc[2] += sale.getQuantity();
+
+            Category category = sale.getProduct().getCategory();
+            Long categoryId = category == null ? null : category.getId();
+            categoryNames.put(categoryId, category == null ? null : category.getName());
+            long[] byCat = byCategory.computeIfAbsent(categoryId, k -> new long[3]);
+            byCat[0] += sale.revenue();
+            byCat[1] += sale.profit();
+            byCat[2] += sale.getQuantity();
         }
 
         List<SummaryPoint> points = new ArrayList<>();
@@ -89,7 +101,13 @@ public class SaleService {
             totalProfit += acc[1];
             totalQuantity += acc[2];
         }
-        return new SalesSummary(period, from, to, totalRevenue, totalProfit, totalQuantity, points);
+        List<CategorySales> categories = byCategory.entrySet().stream()
+                .map(e -> new CategorySales(e.getKey(), categoryNames.get(e.getKey()),
+                        e.getValue()[0], e.getValue()[1], e.getValue()[2]))
+                .sorted(Comparator.comparingLong(CategorySales::revenue).reversed()
+                        .thenComparing(CategorySales::categoryName, Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+        return new SalesSummary(period, from, to, totalRevenue, totalProfit, totalQuantity, points, categories);
     }
 
     private static LocalDate[] resolveRange(Period period, LocalDate from, LocalDate to) {
@@ -107,6 +125,6 @@ public class SaleService {
 
     private Sale get(Long id) {
         return sales.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "판매 기록을 찾을 수 없습니다: " + id));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "판매 기록을 찾을 수 없습니다. 이미 지워졌을 수 있습니다."));
     }
 }

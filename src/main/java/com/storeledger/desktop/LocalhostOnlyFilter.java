@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -20,12 +21,16 @@ import java.util.Set;
 @Profile("desktop")
 class LocalhostOnlyFilter extends OncePerRequestFilter {
 
-    private static final Set<String> ALLOWED_HOSTS = Set.of("localhost", "127.0.0.1");
+    private static final Set<String> ALLOWED_HOSTS = Set.of("localhost", "127.0.0.1", "::1", "[::1]");
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        if (!ALLOWED_HOSTS.contains(request.getServerName())) {
+        String host = request.getServerName().toLowerCase(Locale.ROOT);
+        if (host.endsWith(".")) { // localhost. 처럼 끝에 점을 붙인 표기도 같은 주소다
+            host = host.substring(0, host.length() - 1);
+        }
+        if (!ALLOWED_HOSTS.contains(host)) {
             response.sendError(HttpServletResponse.SC_FORBIDDEN);
             return;
         }

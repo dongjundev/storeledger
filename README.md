@@ -42,18 +42,24 @@ app:
 만드는 Mac에 JDK 21이 있어야 하고, 결과물은 같은 종류의 칩(Apple Silicon / Intel)을 쓰는 Mac에서 실행됩니다.
 
 ```bash
-packaging/build-mac-app.sh "가게 이름"     # 이름 생략 시 "Store Ledger"
+packaging/build-mac-app.sh "Store Ledger" "우리 가게 이름"   # 두 값 모두 생략 가능
 ```
 
-- 결과: `build/mac-app/가게 이름.app` (다른 Mac으로 옮길 때 쓰는 zip도 함께). 응용 프로그램 폴더에 넣고 더블클릭하면
-  서버가 뜨고 브라우저가 열립니다. 앱 이름이 화면 제목의 상호로도 쓰이며, 바꾸려면 다시 만듭니다.
+- 첫 번째 값은 Dock·Finder에 보이는 **앱 이름**, 두 번째 값은 **화면 제목에 표시할 상호**입니다. 앱 이름에 한글을 쓰면
+  코드 서명이 깨져 Gatekeeper가 거부하고 Apple 공증도 받을 수 없으므로, 앱 이름은 영문으로 두고 한글 상호는 두 번째 값으로
+  주세요. 서명이 깨지면 빌드 끝에 경고가 나옵니다.
+- 결과: `build/mac-app/<앱 이름>.app` (다른 Mac으로 옮길 때 쓰는 zip도 함께). 응용 프로그램 폴더에 넣고 더블클릭하면
+  서버가 뜨고 브라우저가 열립니다. 상호를 바꾸려면 다시 만듭니다.
 - 데이터는 `~/StoreLedger/data`, 로그는 `~/StoreLedger/logs`. 백업은 `~/StoreLedger` 폴더를 복사하면 됩니다.
+  앱이 켜진 채 복사해도 파일은 열리지만 복사 직전까지만 담기므로, 앱을 종료한 뒤 복사하는 편이 확실합니다.
 - 앱의 장부는 `./gradlew bootRun`으로 쓰던 장부(`./data/storeledger.mv.db`)와 별개입니다. 기존 장부를 앱에서 계속 쓰려면
   앱에 아무것도 입력하기 전에, 앱을 종료한 상태에서 그 파일을 `~/StoreLedger/data/storeledger.mv.db`로 복사하세요.
   앱에 이미 입력한 내용이 있으면 덮어써져 사라지고, 두 장부를 나눠 쓰면 나중에 합칠 수 없습니다.
 - Dock 아이콘 클릭 → 화면 다시 열기. Cmd+Q 또는 Dock에서 종료 → 서버 정리 후 종료. 부팅 시 자동 시작은 하지 않습니다.
 - 접속은 같은 Mac에서만 됩니다 (127.0.0.1:28080). 개발용 `bootRun`(8080)과 동시에 실행해도 겹치지 않습니다.
-  다른 사이트가 이 앱에 요청하지 못하게 localhost 주소로 온 요청만 받고, H2 콘솔은 앱에서 꺼져 있습니다.
+  H2 콘솔은 앱에서 꺼져 있고, DNS 리바인딩을 막기 위해 localhost 주소로 온 요청만 받습니다. 다른 사이트의 스크립트가
+  이 앱을 직접 호출하지 못하는 것은 API가 JSON 요청만 받고 CORS 허용 헤더를 주지 않기 때문이며, 이 두 가지는
+  같이 유지되어야 합니다.
 - 다른 Mac으로 옮길 때는 앱 폴더가 아니라 **zip 파일**을 옮기세요. 앱 안의 심볼릭 링크가 exFAT USB나 일부 클라우드
   드라이브를 거치면 깨져서 실제로 손상될 수 있습니다.
 - 인터넷·AirDrop·메신저로 받은 앱은 "손상되었기 때문에 열 수 없습니다"라고 나옵니다. 파일은 정상이고, Apple 개발자
@@ -94,6 +100,10 @@ DB_HOST=localhost DB_USER=ledger DB_PASSWORD='비밀번호' SPRING_PROFILES_ACTI
 지운 기본 카테고리는 재시작해도 다시 생기지 않습니다. 상품은 카테고리를 하나 고르거나 미분류로 둘 수 있고,
 카테고리를 지우면 그 카테고리의 상품은 미분류가 됩니다.
 
+대시보드 아래쪽 **카테고리별 매출** 원 그래프는 위 기간 필터를 그대로 따릅니다. 조각은 같은 파란색의 진하기로
+구분하고 큰 조각일수록 진합니다. 색만으로 구분하지 않도록 범례에 이름과 비중을 함께 적고, 표로 보기에서는
+묶지 않은 전체 카테고리의 매출·비중·이익·수량을 볼 수 있습니다. 매출이 있는 카테고리가 6개를 넘으면 작은 것들은 '기타'로 묶어 그리고, 표에는 묶지 않고 모두 나옵니다.
+
 ## 마진 계산식
 
 ```
@@ -127,7 +137,7 @@ DB_HOST=localhost DB_USER=ledger DB_PASSWORD='비밀번호' SPRING_PROFILES_ACTI
 | PUT / DELETE | `/api/categories/{id}` | 이름 수정 / 삭제 (그 카테고리의 상품은 미분류가 됨) |
 | GET / POST | `/api/sales?from=&to=` | 판매 기록 목록(기본 최근 30일) / 등록 (`unitPrice` 생략 시 상품 판매가) |
 | PUT / DELETE | `/api/sales/{id}` | 수정 / 삭제 |
-| GET | `/api/sales/summary?period=DAILY\|WEEKLY\|MONTHLY\|YEARLY&from=&to=` | 기간별 매출·이익·수량 집계 (빈 구간은 0으로 채움, 한 번에 최대 1,000개 구간) |
+| GET | `/api/sales/summary?period=DAILY\|WEEKLY\|MONTHLY\|YEARLY&from=&to=` | 기간별 매출·이익·수량 집계 (빈 구간은 0으로 채움, 한 번에 최대 1,000개 구간) + 같은 기간의 카테고리별 집계 |
 
 `from`/`to` 생략 시 `to`는 오늘(KST), `from`은 단위별 기본 범위(최근 30일 / 12주 / 12개월 / 5년)입니다. 주는 월요일 시작입니다.
 오류는 RFC 9457 ProblemDetail JSON(`detail` 필드)으로 내려갑니다.

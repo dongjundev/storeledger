@@ -84,8 +84,11 @@ public final class DesktopLauncher {
         if (desktop.isSupported(Desktop.Action.APP_QUIT_HANDLER)) {
             desktop.setQuitHandler((event, response) -> {
                 log.info("종료 요청: 서버를 정리합니다");
-                context.close();
-                response.performQuit();
+                try {
+                    context.close();
+                } finally {
+                    response.performQuit(); // 정리 중 오류가 나도 종료는 되게 한다
+                }
             });
         }
         if (desktop.isSupported(Desktop.Action.APP_EVENT_REOPENED)) {
@@ -105,16 +108,22 @@ public final class DesktopLauncher {
     private static void handleStartupFailure(Exception e) {
         String message = findCause(e, PortInUseException.class) != null
                 ? "포트 " + PORT + "을(를) 다른 프로그램이나 다른 사용자 계정에서 켠 이 앱이 쓰고 있어 실행할 수 없습니다."
-                : "실행 중 문제가 생겼습니다.\n\n" + rootCause(e).getMessage();
+                : "실행 중 문제가 생겼습니다.\n\n" + reason(rootCause(e));
         showErrorAndExit(message, e);
     }
 
     private static void showErrorAndExit(String message, Exception cause) {
         log.error("실행 실패: {}", message, cause);
-        JOptionPane.showMessageDialog(null,
-                message + "\n\n자세한 내용: " + HOME.resolve("logs").resolve("app.log"),
+        Path log = HOME.resolve("logs").resolve("app.log");
+        String detail = Files.exists(log) ? message + "\n\n자세한 내용: " + log : message;
+        JOptionPane.showMessageDialog(null, detail,
                 System.getProperty("app.store-name", "Store Ledger"), JOptionPane.ERROR_MESSAGE);
         System.exit(1);
+    }
+
+    /** 예외 메시지가 없을 때 "null" 대신 예외 이름을 보여 준다. */
+    private static String reason(Throwable e) {
+        return e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
     }
 
     /** ~/StoreLedger/app.lock 을 잠근다. 같은 사용자의 다른 복사본이 켜져 있거나 켜지는 중이면 false. */

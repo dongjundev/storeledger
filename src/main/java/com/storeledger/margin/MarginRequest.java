@@ -39,7 +39,7 @@ public record MarginRequest(
 
     @AssertTrue(message = "주문관리와 판매 수수료율 합계는 100% 이하여야 합니다")
     public boolean isFeeRateTotalValid() {
-        return orderFeeRate.add(salesFeeRate).compareTo(BigDecimal.valueOf(100)) <= 0;
+        return MarginResult.feeRatesWithinLimit(orderFeeRate, salesFeeRate);
     }
 
     public MarginResult calculate() {

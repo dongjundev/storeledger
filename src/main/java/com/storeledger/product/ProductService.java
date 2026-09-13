@@ -64,6 +64,6 @@ public class ProductService {
 
     public Product get(Long id) {
         return products.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "상품을 찾을 수 없습니다: " + id));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "상품을 찾을 수 없습니다. 이미 지워졌을 수 있습니다."));
     }
 }

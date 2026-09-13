@@ -47,7 +47,7 @@ public class CategoryService {
 
     public Category get(Long id) {
         return categories.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "카테고리를 찾을 수 없습니다: " + id));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "카테고리를 찾을 수 없습니다. 이미 지워졌을 수 있습니다."));
     }
 
     /** 대소문자만 다른 이름(pet / Pet)도 같은 카테고리로 본다. */

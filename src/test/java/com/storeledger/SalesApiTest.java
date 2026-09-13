@@ -9,6 +9,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -154,6 +155,34 @@ class SalesApiTest {
     }
 
     @Test
+    void 집계에는_같은_기간의_카테고리별_매출도_들어간다() throws Exception {
+        long kitchen = createCategory("주방");
+        long stationery = createCategory("문구");
+        long mug = createProduct(MUG.replace("\"name\":\"머그컵\"", "\"name\":\"머그컵\",\"categoryId\":" + kitchen));
+        long pen = createProduct("{\"name\":\"볼펜\",\"categoryId\":" + stationery + ",\"sellingPrice\":3000,\"costPrice\":800}");
+        long ring = createProduct("{\"name\":\"키링\",\"sellingPrice\":5000,\"costPrice\":1000}"); // 미분류
+        createSale(mug, "2026-09-04", 2, null);   // 19,900 × 2, 개당 마진 7,280
+        createSale(pen, "2026-09-04", 1, null);   // 기본 수수료 4.95%: 3,000 − 800 − 149
+        createSale(ring, "2026-09-04", 1, null);  // 5,000 − 1,000 − 248
+
+        mvc.perform(get("/api/sales/summary").param("period", "DAILY").param("from", "2026-09-04").param("to", "2026-09-04"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.categories.length()").value(3))
+                .andExpect(jsonPath("$.categories[0].categoryName").value("주방"))   // 매출이 큰 순서
+                .andExpect(jsonPath("$.categories[0].revenue").value(39800))
+                .andExpect(jsonPath("$.categories[0].profit").value(14560))
+                .andExpect(jsonPath("$.categories[0].quantity").value(2))
+                .andExpect(jsonPath("$.categories[1].categoryId", nullValue()))      // 미분류
+                .andExpect(jsonPath("$.categories[1].categoryName", nullValue()))
+                .andExpect(jsonPath("$.categories[1].revenue").value(5000))
+                .andExpect(jsonPath("$.categories[1].profit").value(3752))
+                .andExpect(jsonPath("$.categories[2].categoryName").value("문구"))
+                .andExpect(jsonPath("$.categories[2].revenue").value(3000))
+                .andExpect(jsonPath("$.categories[2].profit").value(2051))
+                .andExpect(jsonPath("$.totalRevenue").value(47800));
+    }
+
+    @Test
     void 구간이_1000개를_넘는_조회는_400이고_큰_단위로는_볼_수_있다() throws Exception {
         // 2024-01-01 ~ 2026-09-26 은 1,000일, 하루 더 늘리면 1,001일
         mvc.perform(get("/api/sales/summary").param("period", "DAILY").param("from", "2024-01-01").param("to", "2026-09-26"))
@@ -195,6 +224,28 @@ class SalesApiTest {
     }
 
     @Test
+    void 수량_상한과_아주_큰_수수료율은_400으로_막는다() throws Exception {
+        long productId = createProduct();
+        mvc.perform(post("/api/sales").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"productId\":" + productId + ",\"saleDate\":\"2026-09-04\",\"quantity\":2147483647}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("quantity: 수량은 100,000 이하여야 합니다"));
+
+        // 자릿수가 엄청나게 큰 값도 더하기 전에 걸러 500 대신 400 으로 답한다
+        mvc.perform(post("/api/margin").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sellingPrice\":1000,\"costPrice\":0,\"orderFeeRate\":1E+2000000000,\"salesFeeRate\":0}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void 상품명의_앞뒤_공백은_지운다() throws Exception {
+        mvc.perform(post("/api/products").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"  여백 상품  \",\"sellingPrice\":1000,\"costPrice\":100}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.name").value("여백 상품"));
+    }
+
+    @Test
     void 시작일이_종료일보다_늦으면_400() throws Exception {
         mvc.perform(get("/api/sales/summary").param("from", "2026-09-05").param("to", "2026-09-04"))
                 .andExpect(status().isBadRequest())
@@ -220,6 +271,13 @@ class SalesApiTest {
 
         mvc.perform(delete("/api/products/" + productId))
                 .andExpect(status().isConflict());
+        // 409 를 받은 뒤에는 트랜잭션에 롤백 표시가 걸리므로, 이어지는 검증은 다음 테스트에서 따로 한다
+    }
+
+    @Test
+    void 판매_기록을_지우면_상품도_삭제할_수_있다() throws Exception {
+        long productId = createProduct();
+        createSale(productId, "2026-09-04", 1, null);
 
         String sales = mvc.perform(get("/api/sales").param("from", "2026-09-04").param("to", "2026-09-04"))
                 .andExpect(status().isOk())
@@ -230,6 +288,21 @@ class SalesApiTest {
         mvc.perform(delete("/api/sales/" + saleId)).andExpect(status().isNoContent());
         mvc.perform(delete("/api/products/" + productId)).andExpect(status().isNoContent());
         mvc.perform(get("/api/products/" + productId)).andExpect(status().isNotFound());
+    }
+
+    private long createCategory(String name) throws Exception {
+        String body = mvc.perform(post("/api/categories").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"" + name + "\"}"))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        return JsonPath.parse(body).read("$.id", Long.class);
+    }
+
+    private long createProduct(String json) throws Exception {
+        String body = mvc.perform(post("/api/products").contentType(MediaType.APPLICATION_JSON).content(json))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        return JsonPath.parse(body).read("$.id", Long.class);
     }
 
     private long createProduct() throws Exception {

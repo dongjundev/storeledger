@@ -26,15 +26,19 @@
     });
     if (res.status === 204) return null;
     const data = await res.json().catch(() => null);
-    if (!res.ok) throw new Error((data && (data.detail || data.message)) || `요청 실패 (${res.status})`);
+    if (!res.ok) {
+      const error = new Error((data && (data.detail || data.message)) || `요청 실패 (${res.status})`);
+      error.status = res.status;
+      throw error;
+    }
     return data;
   }
 
   let toastTimer;
   function toast(message) {
     const el = $('#toast');
-    el.textContent = message;
     el.hidden = false;
+    el.textContent = message;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { el.hidden = true; }, 3500);
   }
@@ -46,13 +50,16 @@
   function emptyRow(tbody, colSpan, text) { const td = tbody.insertRow().insertCell(); td.colSpan = colSpan; td.className = 'empty'; td.textContent = text; }
   // 저장 버튼을 요청이 끝날 때까지 막아, 두 번 눌러 같은 기록이 두 번 저장되지 않게 한다
   async function submitting(form, task) {
-    const button = form.querySelector('button[type="submit"]');
-    if (button.disabled) return;
-    button.disabled = true;
+    if (form.dataset.busy) return;
+    form.dataset.busy = '1';
+    const buttons = [...form.querySelectorAll('button')];
+    const disabledBefore = buttons.map((b) => b.disabled);
+    buttons.forEach((b) => { b.disabled = true; }); // 저장 중에 취소를 눌러도 저장은 진행되므로 함께 잠근다
     try {
       await task();
     } finally {
-      button.disabled = false;
+      buttons.forEach((b, i) => { b.disabled = disabledBefore[i]; });
+      delete form.dataset.busy;
     }
   }
   function linkButton(label, onClick, danger) {
@@ -68,7 +75,11 @@
   const VIEWS = ['dashboard', 'products', 'sales', 'categories'];
   function showView(name) {
     VIEWS.forEach((v) => { $(`#view-${v}`).hidden = v !== name; });
-    document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === name));
+    document.querySelectorAll('.tab').forEach((t) => {
+      const selected = t.dataset.view === name;
+      t.classList.toggle('active', selected);
+      t.setAttribute('aria-current', selected ? 'page' : 'false');
+    });
     if (name === 'dashboard') loadDashboard();
     if (name === 'products') { loadCategories(); loadProducts(); }
     if (name === 'sales') loadProducts().then(loadSales);
@@ -83,7 +94,16 @@
     ink2: '#52514e', muted: '#898781', grid: '#e1e0d9', axis: '#c3c2b7',
   };
   const PERIOD_NAMES = { DAILY: '일별', WEEKLY: '주별', MONTHLY: '월별', YEARLY: '연도별' };
-  const dash = { period: 'DAILY', shownPeriod: 'DAILY', chart: null, points: [], seq: 0 };
+  // 원 그래프 조각: 같은 파란색의 진하기 차이로 구분한다. 큰 조각일수록 진해서 색을 구분하기 어려운 사람도 읽을 수 있다
+  const PIE_SHADES = ['#0d366b', '#184f95', '#256abf', '#2a78d6', '#3987e5', '#6da7ec']; // 진한 순서 = 매출 큰 순서
+  const PIE_OTHER = '#898781';   // 묶어 놓은 '기타'는 회색
+  const SURFACE = '#fcfcfb';     // 조각 사이를 벌리는 배경색 테두리
+  const OTHER = 'other';
+  const dash = { period: 'DAILY', shownPeriod: 'DAILY', chart: null, points: [], categoryChart: null, slices: [],
+    from: null, to: null, seq: 0 };
+
+  const categoryLabel = (c) => c.categoryName ?? '미분류';
+  const sharePct = (value, total) => (total > 0 ? `${((value / total) * 100).toFixed(1)}%` : '0.0%');
 
   async function loadDashboard() {
     if (!validDates($('#dash-from'), $('#dash-to'))) return;
@@ -91,21 +111,30 @@
     const params = new URLSearchParams({ period: dash.period });
     if ($('#dash-from').value) params.set('from', $('#dash-from').value);
     if ($('#dash-to').value) params.set('to', $('#dash-to').value);
-    const wrap = $('.chart-wrap');
-    wrap.classList.add('loading');
+    const wraps = document.querySelectorAll('.chart-wrap'); // 막대·원 그래프 모두 흐리게
+    wraps.forEach((w) => w.classList.add('loading'));
     try {
       const summary = await api(`/api/sales/summary?${params}`);
       if (seq !== dash.seq) return;
       $('#dash-from').value = summary.from;   // from/to 생략 시 서버 기본 범위를 입력칸에 반영
       $('#dash-to').value = summary.to;
+      dash.from = summary.from;               // 조회가 거부되면 이 기간으로 되돌린다
+      dash.to = summary.to;
       $('#chart-title').textContent = `${PERIOD_NAMES[summary.period]} 매출 · 이익`;
       renderTiles(summary);
       renderChart(summary);
       renderSummaryTable(summary);
+      renderCategoryChart(summary);
+      renderCategorySalesTable(summary);
     } catch (e) {
-      if (seq === dash.seq) toast(e.message);
+      if (seq !== dash.seq) return;
+      toast(e.message);
+      if (dash.from) { // 화면의 숫자는 지난 기간 그대로이므로 날짜칸도 그 기간으로 되돌린다
+        $('#dash-from').value = dash.from;
+        $('#dash-to').value = dash.to;
+      }
     } finally {
-      if (seq === dash.seq) wrap.classList.remove('loading');
+      if (seq === dash.seq) wraps.forEach((w) => w.classList.remove('loading'));
     }
   }
 
@@ -113,7 +142,10 @@
     const btn = e.target.closest('button[data-period]');
     if (!btn) return;
     dash.period = btn.dataset.period;
-    $('#period-buttons').querySelectorAll('button').forEach((b) => b.classList.toggle('active', b === btn));
+    $('#period-buttons').querySelectorAll('button').forEach((b) => {
+      b.classList.toggle('active', b === btn);
+      b.setAttribute('aria-pressed', String(b === btn));
+    });
     $('#dash-from').value = '';
     $('#dash-to').value = '';
     loadDashboard();
@@ -215,6 +247,85 @@
     cell(total, count(s.totalQuantity), 'num');
   }
 
+  // 매출이 있는 카테고리만, 많으면 작은 것들을 '기타'로 묶는다 (조각이 너무 얇으면 읽을 수 없다)
+  function categorySlices(summary) {
+    const rows = summary.categories.filter((c) => c.revenue > 0);
+    if (rows.length <= PIE_SHADES.length) return rows; // 색을 줄 수 있는 만큼만 따로 보여 준다
+    const tail = rows.slice(PIE_SHADES.length);
+    return [...rows.slice(0, PIE_SHADES.length), {
+      categoryId: OTHER,
+      categoryName: tail.length === 1 ? categoryLabel(tail[0]) : `기타 ${tail.length}개`, // 하나뿐이면 이름 그대로
+      revenue: tail.reduce((sum, c) => sum + c.revenue, 0),
+      profit: tail.reduce((sum, c) => sum + c.profit, 0),
+      quantity: tail.reduce((sum, c) => sum + c.quantity, 0),
+    }];
+  }
+
+  function renderCategoryChart(summary) {
+    const slices = categorySlices(summary);
+    dash.slices = slices;
+    $('#category-chart').parentElement.hidden = slices.length === 0;
+    $('#category-empty').hidden = slices.length > 0;
+    if (!slices.length) return;
+
+    const total = slices.reduce((sum, c) => sum + c.revenue, 0);
+    const labels = slices.map((c) => `${categoryLabel(c)} ${sharePct(c.revenue, total)}`);
+    const data = slices.map((c) => c.revenue);
+    const colors = slices.map((c, i) => (c.categoryId === OTHER ? PIE_OTHER : PIE_SHADES[i]));
+
+    if (dash.categoryChart) {
+      dash.categoryChart.data.labels = labels;
+      dash.categoryChart.data.datasets[0].data = data;
+      dash.categoryChart.data.datasets[0].backgroundColor = colors;
+      dash.categoryChart.update();
+      return;
+    }
+    dash.categoryChart = new Chart($('#category-chart'), {
+      type: 'pie',
+      data: { labels, datasets: [{ data, backgroundColor: colors, borderColor: SURFACE, borderWidth: 2, hoverOffset: 6 }] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'right', onClick: () => {}, // 조각을 숨기면 라벨의 비중과 그림이 어긋난다
+            labels: { boxWidth: 12, boxHeight: 12, padding: 10, color: COLORS.ink2 } },
+          tooltip: {
+            callbacks: {
+              title: (items) => categoryLabel(dash.slices[items[0].dataIndex]),
+              label: (item) => {
+                const c = dash.slices[item.dataIndex];
+                const total2 = dash.slices.reduce((sum, x) => sum + x.revenue, 0);
+                return [`매출  ${won(c.revenue)} (${sharePct(c.revenue, total2)})`, `이익  ${won(c.profit)}`, `수량  ${count(c.quantity)}`];
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  function renderCategorySalesTable(summary) {
+    const tbody = $('#category-sales-table tbody');
+    clearRows(tbody);
+    const rows = summary.categories; // 서버는 판매가 있는 카테고리만 준다. 매출 0원이어도 이익·수량이 있으니 모두 보여 준다
+    if (!rows.length) { emptyRow(tbody, 5, '이 기간에는 판매 기록이 없습니다.'); return; }
+    for (const c of rows) {
+      const tr = tbody.insertRow();
+      cell(tr, categoryLabel(c), c.categoryName ? '' : 'muted');
+      numCell(tr, c.revenue, won);
+      cell(tr, sharePct(c.revenue, summary.totalRevenue), 'num');
+      numCell(tr, c.profit, won);
+      cell(tr, count(c.quantity), 'num');
+    }
+    const total = tbody.insertRow();
+    total.className = 'total';
+    cell(total, '합계');
+    numCell(total, summary.totalRevenue, won);
+    cell(total, sharePct(summary.totalRevenue, summary.totalRevenue), 'num');
+    numCell(total, summary.totalProfit, won);
+    cell(total, count(summary.totalQuantity), 'num');
+  }
+
   // ---------- 상품 ----------
   const productForm = $('#product-form');
   const PRODUCT_FIELDS = ['name', 'sellingPrice', 'costPrice', 'buyerShippingFee', 'shippingCost', 'otherCost',
@@ -276,15 +387,18 @@
   productForm.addEventListener('submit', (e) => {
     e.preventDefault();
     submitting(productForm, async () => {
+      const editing = editingProductId; // 저장하는 동안 수정 상태가 바뀔 수 있으므로 지금 값을 쓴다
+      const body = productBody();
       try {
-        if (editingProductId) await api(`/api/products/${editingProductId}`, { method: 'PUT', body: productBody() });
-        else await api('/api/products', { method: 'POST', body: productBody() });
-        toast(editingProductId ? '상품을 수정했습니다.' : '상품을 등록했습니다.');
-        resetProductForm();
-        loadProducts();
+        if (editing) await api(`/api/products/${editing}`, { method: 'PUT', body });
+        else await api('/api/products', { method: 'POST', body });
+        toast(editing ? '상품을 수정했습니다.' : '상품을 등록했습니다.');
+        if (editingProductId === editing) resetProductForm();
       } catch (err) {
         toast(err.message);
+        if (err.status === 404 && editingProductId === editing) resetProductForm(); // 이미 지워진 상품
       }
+      loadProducts(); // 실패했을 때도 목록을 최신으로 맞춘다
     });
   });
 
@@ -319,10 +433,11 @@
       await api(`/api/products/${p.id}`, { method: 'DELETE' });
       toast('상품을 삭제했습니다.');
       if (editingProductId === p.id) resetProductForm();
-      loadProducts();
     } catch (err) {
       toast(err.message);
+      if (err.status === 404 && editingProductId === p.id) resetProductForm();
     }
+    loadProducts();
   }
 
   // 입력할 때마다 서버의 계산식(/api/margin)으로 마진 미리보기
@@ -390,15 +505,17 @@
     e.preventDefault();
     const body = { name: formValues(categoryForm).name.trim() };
     submitting(categoryForm, async () => {
+      const editing = editingCategoryId;
       try {
-        if (editingCategoryId) await api(`/api/categories/${editingCategoryId}`, { method: 'PUT', body });
+        if (editing) await api(`/api/categories/${editing}`, { method: 'PUT', body });
         else await api('/api/categories', { method: 'POST', body });
-        toast(editingCategoryId ? '카테고리를 수정했습니다.' : '카테고리를 추가했습니다.');
-        resetCategoryForm();
-        loadCategories();
+        toast(editing ? '카테고리를 수정했습니다.' : '카테고리를 추가했습니다.');
+        if (editingCategoryId === editing) resetCategoryForm();
       } catch (err) {
         toast(err.message);
+        if (err.status === 404 && editingCategoryId === editing) resetCategoryForm();
       }
+      loadCategories();
     });
   });
 
@@ -425,10 +542,11 @@
       await api(`/api/categories/${c.id}`, { method: 'DELETE' });
       toast('카테고리를 삭제했습니다.');
       if (editingCategoryId === c.id) resetCategoryForm();
-      loadCategories();
     } catch (err) {
       toast(err.message);
+      if (err.status === 404 && editingCategoryId === c.id) resetCategoryForm();
     }
+    loadCategories();
   }
 
   // ---------- 판매 기록 ----------
@@ -453,7 +571,10 @@
   saleForm.elements.productId.addEventListener('change', syncUnitPrice);
 
   async function loadSales() {
-    if (!validDates($('#sales-from'), $('#sales-to'))) return;
+    const fromInput = $('#sales-from'), toInput = $('#sales-to');
+    if (!fromInput.value) fromInput.value = daysAgoISO(29); // 비우면 최근 30일만 나오므로 그 기간을 칸에 보여 준다
+    if (!toInput.value) toInput.value = todayISO();
+    if (!validDates(fromInput, toInput)) return;
     const seq = ++salesSeq;
     const params = new URLSearchParams();
     if ($('#sales-from').value) params.set('from', $('#sales-from').value);
@@ -489,15 +610,17 @@
     const v = formValues(saleForm);
     const body = { productId: Number(v.productId), saleDate: v.saleDate, quantity: Number(v.quantity), unitPrice: numOrNull(v.unitPrice) };
     submitting(saleForm, async () => {
+      const editing = editingSaleId;
       try {
-        if (editingSaleId) await api(`/api/sales/${editingSaleId}`, { method: 'PUT', body });
+        if (editing) await api(`/api/sales/${editing}`, { method: 'PUT', body });
         else await api('/api/sales', { method: 'POST', body });
-        toast(editingSaleId ? '판매 기록을 수정했습니다.' : '판매 기록을 추가했습니다.');
-        resetSaleForm();
-        loadSales();
+        toast(editing ? '판매 기록을 수정했습니다.' : '판매 기록을 추가했습니다.');
+        if (editingSaleId === editing) resetSaleForm();
       } catch (err) {
         toast(err.message);
+        if (err.status === 404 && editingSaleId === editing) resetSaleForm(); // 다른 창에서 이미 지운 기록
       }
+      loadSales();
     });
   });
 
@@ -528,12 +651,14 @@
       await api(`/api/sales/${s.id}`, { method: 'DELETE' });
       toast('판매 기록을 삭제했습니다.');
       if (editingSaleId === s.id) resetSaleForm();
-      loadSales();
     } catch (err) {
       toast(err.message);
+      if (err.status === 404 && editingSaleId === s.id) resetSaleForm();
     }
+    loadSales();
   }
 
+  saleForm.elements.saleDate.max = todayISO(); // 미래 날짜로 저장하면 기본 화면에서 보이지 않는다
   $('#sales-from').value = daysAgoISO(29);
   $('#sales-to').value = todayISO();
   ['#sales-from', '#sales-to'].forEach((sel) => $(sel).addEventListener('change', loadSales));

@@ -73,6 +73,7 @@ input:focus, select:focus { outline: 2px solid rgba(42, 120, 214, 0.35); outline
 /* 높이에 x축 영역까지 포함 (내부 스크롤 방지). 재조회 중에는 이전 렌더를 흐리게 유지 */
 .chart-wrap { position: relative; height: 340px; transition: opacity .15s; }
 .chart-wrap.loading { opacity: 0.5; }
+.chart-wrap.pie { height: 300px; }
 
 .table-view { margin-top: 12px; }
 .table-view summary { cursor: pointer; color: var(--ink-2); }
