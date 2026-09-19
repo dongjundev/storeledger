@@ -41,14 +41,16 @@ public class SaleService {
 
     public SaleResponse create(SaleRequest request) {
         Product product = products.get(request.productId());
-        Sale sale = new Sale(product, request.saleDate(), request.quantity(), unitPrice(request, product));
+        Sale sale = new Sale(product, request.saleDate(), request.quantity(), unitPrice(request, product),
+                unitCost(request, product));
         return SaleResponse.from(sales.save(sale));
     }
 
     public SaleResponse update(Long id, SaleRequest request) {
         Sale sale = get(id);
         Product product = products.get(request.productId());
-        sale.update(product, request.saleDate(), request.quantity(), unitPrice(request, product));
+        sale.update(product, request.saleDate(), request.quantity(), unitPrice(request, product),
+                unitCost(request, product));
         return SaleResponse.from(sale);
     }
 
@@ -121,6 +123,11 @@ public class SaleService {
 
     private static int unitPrice(SaleRequest request, Product product) {
         return request.unitPrice() != null ? request.unitPrice() : product.getSellingPrice();
+    }
+
+    /** 생략하면 그 시점 상품 원가를 박아 둔다. 나중에 상품 원가를 고쳐도 지난 이익이 흔들리지 않게 한다. */
+    private static int unitCost(SaleRequest request, Product product) {
+        return request.unitCost() != null ? request.unitCost() : product.getCostPrice();
     }
 
     private Sale get(Long id) {

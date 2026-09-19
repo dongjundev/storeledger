@@ -40,7 +40,7 @@ public class Product {
     @Column(nullable = false)
     private int costPrice;
 
-    /** 개당 택배비: 판매자가 택배사에 내는 실제 배송 비용 */
+    /** 개당 판매자 배송비: 택배사에 실제로 내는 비용 */
     @Column(nullable = false)
     private int shippingCost;
 
@@ -93,8 +93,13 @@ public class Product {
         return marginAt(sellingPrice);
     }
 
-    /** 실제 판매 단가 기준 개당 마진 (할인 판매 반영). */
+    /** 실제 판매 단가 기준 개당 마진 (할인 판매 반영). 원가는 상품에 적어 둔 값을 쓴다. */
     public MarginResult marginAt(int unitPrice) {
+        return marginAt(unitPrice, costPrice);
+    }
+
+    /** 판매 단가와 그 판매 시점 원가 기준 개당 마진. 달러로 매입해 환율마다 원가가 달라지는 경우에 쓴다. */
+    public MarginResult marginAt(int unitPrice, int costPrice) {
         return MarginResult.of(unitPrice, costPrice, shippingCost, buyerShippingFee, otherCost, getOrderFeeRate(),
                 getSalesFeeRate());
     }

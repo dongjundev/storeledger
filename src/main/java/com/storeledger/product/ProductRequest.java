@@ -13,7 +13,7 @@ import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
 
-/** 상품 등록/수정 요청. categoryId 생략 시 미분류, 택배비·구매자 배송비·기타비용은 생략 시 0, 수수료율은 생략 시 기본값. */
+/** 상품 등록/수정 요청. categoryId 생략 시 미분류, 판매자 배송비·구매자 배송비·기타비용은 생략 시 0, 수수료율은 생략 시 기본값. */
 public record ProductRequest(
         @NotBlank(message = "상품명을 입력하세요") @Size(max = 100, message = "상품명은 100자 이하여야 합니다") String name,
         Long categoryId,
@@ -21,8 +21,8 @@ public record ProductRequest(
         @Max(value = 100_000_000, message = "판매가는 1억 원 이하여야 합니다") Integer sellingPrice,
         @NotNull(message = "원가를 입력하세요") @Min(value = 0, message = "원가는 0 이상이어야 합니다")
         @Max(value = 100_000_000, message = "원가는 1억 원 이하여야 합니다") Integer costPrice,
-        @Min(value = 0, message = "택배비는 0 이상이어야 합니다")
-        @Max(value = 100_000_000, message = "택배비는 1억 원 이하여야 합니다") Integer shippingCost,
+        @Min(value = 0, message = "판매자 배송비는 0 이상이어야 합니다")
+        @Max(value = 100_000_000, message = "판매자 배송비는 1억 원 이하여야 합니다") Integer shippingCost,
         @Min(value = 0, message = "구매자 배송비는 0 이상이어야 합니다")
         @Max(value = 100_000_000, message = "구매자 배송비는 1억 원 이하여야 합니다") Integer buyerShippingFee,
         @Min(value = 0, message = "기타 비용은 0 이상이어야 합니다")

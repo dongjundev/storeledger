@@ -9,11 +9,13 @@ public record SaleResponse(
         LocalDate saleDate,
         int quantity,
         int unitPrice,
+        int unitCost,
         long revenue,
         long profit) {
 
     public static SaleResponse from(Sale sale) {
         return new SaleResponse(sale.getId(), sale.getProduct().getId(), sale.getProduct().getName(),
-                sale.getSaleDate(), sale.getQuantity(), sale.getUnitPrice(), sale.revenue(), sale.profit());
+                sale.getSaleDate(), sale.getQuantity(), sale.getUnitPrice(), sale.costPrice(), sale.revenue(),
+                sale.profit());
     }
 }

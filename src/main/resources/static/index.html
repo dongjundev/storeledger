@@ -74,18 +74,38 @@
   <section id="view-products" class="view" hidden>
     <div class="card">
       <h2 id="product-form-title">상품 등록</h2>
-      <form id="product-form" class="form-grid" autocomplete="off">
-        <label>상품명 <input name="name" required maxlength="100" placeholder="예: 세라믹 머그컵"></label>
-        <label>카테고리 <select name="categoryId"><option value="">미분류</option></select></label>
-        <label>판매가 (원) <input name="sellingPrice" type="number" min="0" step="1" required></label>
-        <label>원가 · 매입 단가 (원) <input name="costPrice" type="number" min="0" step="1" required></label>
-        <label>개당 구매자 배송비 (원) <input name="buyerShippingFee" type="number" min="0" step="1" value="0"></label>
-        <label>개당 택배비 (원) <input name="shippingCost" type="number" min="0" step="1" value="0"></label>
-        <label>개당 기타 비용 · 포장 등 (원) <input name="otherCost" type="number" min="0" step="1" value="0"></label>
-        <label>주문관리 수수료율 (%) <input name="orderFeeRate" type="number" min="0" max="100" step="0.01" value="1.95"></label>
-        <label>판매 수수료율 (%) <input name="salesFeeRate" type="number" min="0" max="100" step="0.01" value="3.00"></label>
-        <p class="hint">구매자 배송비는 구매자가 결제하는 배송비(무료배송이면 0), 택배비는 판매자가 택배사에 내는 실제 비용입니다.</p>
-        <p class="hint">주문관리 수수료는 판매가와 구매자 배송비에, 판매 수수료는 판매가에만 붙습니다. 기본값은 영세 등급 주문관리 1.95%와 판매 3.00%(2.73% + VAT)입니다. 마케팅 링크로 들어온 주문은 판매 1.00%, 매출이 늘어 등급이 오르면 주문관리가 중소1 2.56% ~ 일반 3.63%로 바뀝니다. 내 수수료율은 스마트스토어센터 › 정산관리 › 나의 수수료 정보에서 확인하세요.</p>
+      <form id="product-form" class="form-sections" autocomplete="off">
+        <fieldset class="field-group">
+          <legend>기본 정보</legend>
+          <div class="form-grid">
+            <label>상품명 <input name="name" required maxlength="100" placeholder="예: 세라믹 머그컵"></label>
+            <label>카테고리 <select name="categoryId"><option value="">미분류</option></select></label>
+          </div>
+        </fieldset>
+        <fieldset class="field-group">
+          <legend>구매자가 결제하는 금액 <span class="sub">마진에 더해지는 돈</span></legend>
+          <div class="form-grid">
+            <label>판매가 (원) <input name="sellingPrice" type="number" min="0" step="1" required></label>
+            <label>개당 구매자 배송비 (원) <input name="buyerShippingFee" type="number" min="0" step="1" value="0"></label>
+          </div>
+        </fieldset>
+        <fieldset class="field-group">
+          <legend>판매자가 부담하는 비용 <span class="sub">마진에서 빠지는 돈</span></legend>
+          <div class="form-grid">
+            <label>원가 · 매입 단가 (원) <input name="costPrice" type="number" min="0" step="1" required></label>
+            <label>개당 판매자 배송비 (원) <input name="shippingCost" type="number" min="0" step="1" value="0"></label>
+            <label>개당 기타 비용 · 포장 등 (원) <input name="otherCost" type="number" min="0" step="1" value="0"></label>
+          </div>
+        </fieldset>
+        <fieldset class="field-group">
+          <legend>네이버 수수료율 <span class="sub">보통 그대로 두면 됩니다</span></legend>
+          <div class="form-grid">
+            <label>주문관리 수수료율 (%) <input name="orderFeeRate" type="number" min="0" max="100" step="0.01" value="1.95"></label>
+            <label>판매 수수료율 (%) <input name="salesFeeRate" type="number" min="0" max="100" step="0.01" value="3.00"></label>
+            <p class="hint">주문관리 수수료는 판매가와 구매자 배송비에, 판매 수수료는 판매가에만 붙습니다. 기본값은 영세 등급 주문관리 1.95%와 판매 3.00%(2.73% + VAT)입니다. 마케팅 링크로 들어온 주문은 판매 1.00%, 매출이 늘어 등급이 오르면 주문관리가 중소1 2.56% ~ 일반 3.63%로 바뀝니다. 내 수수료율은 스마트스토어센터 › 정산관리 › 나의 수수료 정보에서 확인하세요.</p>
+          </div>
+        </fieldset>
+        <p class="hint">구매자 배송비는 구매자가 결제하는 배송비(무료배송이면 0), 판매자 배송비는 택배사에 실제로 내는 비용입니다.</p>
         <p class="preview" id="margin-preview">판매가와 원가를 입력하면 수수료·마진이 계산됩니다.</p>
         <div class="actions">
           <button type="submit" class="primary">저장</button>
@@ -101,7 +121,7 @@
           <thead>
             <tr>
               <th>상품명</th><th>카테고리</th><th class="num">판매가</th><th class="num">원가</th>
-              <th class="num">구매자 배송비</th><th class="num">택배비</th><th class="num">기타</th><th class="num">수수료율</th><th class="num">수수료</th>
+              <th class="num">구매자 배송비</th><th class="num">판매자 배송비</th><th class="num">기타</th><th class="num">수수료율</th><th class="num">수수료</th>
               <th class="num">개당 마진</th><th class="num">마진율</th><th></th>
             </tr>
           </thead>
@@ -144,6 +164,8 @@
         <label>판매일 <input name="saleDate" type="date" min="2000-01-01" max="2099-12-31" required></label>
         <label>수량 <input name="quantity" type="number" min="1" step="1" value="1" required></label>
         <label>판매 단가 (원) <input name="unitPrice" type="number" min="0" step="1" required></label>
+        <label>개당 원가 (원) <input name="unitCost" type="number" min="0" step="1" required></label>
+        <p class="hint">상품에 적어 둔 원가가 기본으로 들어갑니다. 달러로 매입해 환율 때문에 달라졌다면 그 건의 실제 원가로 고치세요. 저장한 뒤 상품 원가를 바꿔도 이 기록의 이익은 그대로입니다.</p>
         <div class="actions">
           <button type="submit" class="primary">저장</button>
           <button type="button" class="ghost" id="sale-cancel" hidden>취소</button>
@@ -162,7 +184,7 @@
       <div class="table-scroll">
         <table id="sale-table">
           <thead>
-            <tr><th>판매일</th><th>상품</th><th class="num">수량</th><th class="num">단가</th><th class="num">매출</th><th class="num">이익</th><th></th></tr>
+            <tr><th>판매일</th><th>상품</th><th class="num">수량</th><th class="num">단가</th><th class="num">원가</th><th class="num">매출</th><th class="num">이익</th><th></th></tr>
           </thead>
           <tbody></tbody>
         </table>

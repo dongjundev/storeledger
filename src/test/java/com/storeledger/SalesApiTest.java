@@ -14,6 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -23,7 +24,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Transactional
 class SalesApiTest {
 
-    // 판매가 19,900 / 원가 8,000 / 택배비 3,000 / 기타 500 / 수수료 3.63% + 2.00% → 수수료 1,120, 개당 마진 7,280
+    // 판매가 19,900 / 원가 8,000 / 판매자 배송비 3,000 / 기타 500 / 수수료 3.63% + 2.00% → 수수료 1,120, 개당 마진 7,280
     private static final String MUG = """
             {"name":"머그컵","sellingPrice":19900,"costPrice":8000,"shippingCost":3000,"otherCost":500,
              "orderFeeRate":3.63,"salesFeeRate":2.00}
@@ -288,6 +289,53 @@ class SalesApiTest {
         mvc.perform(delete("/api/sales/" + saleId)).andExpect(status().isNoContent());
         mvc.perform(delete("/api/products/" + productId)).andExpect(status().isNoContent());
         mvc.perform(get("/api/products/" + productId)).andExpect(status().isNotFound());
+    }
+
+    @Test
+    void 판매_기록에_적은_원가로_이익을_계산한다() throws Exception {
+        long productId = createProduct();
+
+        // 환율이 올라 이번 매입은 개당 10,000원: 19,900 − 10,000 − 3,000 − 500 − 1,120 = 5,280
+        mvc.perform(post("/api/sales").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"productId\":" + productId
+                                + ",\"saleDate\":\"2026-09-04\",\"quantity\":2,\"unitCost\":10000}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.unitCost").value(10000))
+                .andExpect(jsonPath("$.revenue").value(39800))
+                .andExpect(jsonPath("$.profit").value(10560));
+    }
+
+    @Test
+    void 원가를_생략하면_그때_상품_원가가_박히고_나중에_상품을_고쳐도_지난_이익은_그대로다() throws Exception {
+        long productId = createProduct();
+        createSale(productId, "2026-09-04", 2, null);
+
+        // 상품 원가를 8,000 → 12,000 으로 올린다
+        mvc.perform(put("/api/products/" + productId).contentType(MediaType.APPLICATION_JSON)
+                        .content(MUG.replace("\"costPrice\":8000", "\"costPrice\":12000")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.margin").value(3280));   // 앞으로 팔 것은 새 원가로
+
+        mvc.perform(get("/api/sales").param("from", "2026-09-04").param("to", "2026-09-04"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].unitCost").value(8000))
+                .andExpect(jsonPath("$[0].profit").value(14560));   // 이미 판 것은 그대로
+
+        mvc.perform(get("/api/sales/summary").param("period", "DAILY")
+                        .param("from", "2026-09-04").param("to", "2026-09-04"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalProfit").value(14560));
+    }
+
+    @Test
+    void 개당_원가가_1억을_넘으면_거부한다() throws Exception {
+        long productId = createProduct();
+
+        mvc.perform(post("/api/sales").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"productId\":" + productId
+                                + ",\"saleDate\":\"2026-09-04\",\"quantity\":1,\"unitCost\":100000001}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("unitCost: 개당 원가는 1억 원 이하여야 합니다"));
     }
 
     private long createCategory(String name) throws Exception {

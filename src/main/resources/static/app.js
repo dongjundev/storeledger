@@ -82,7 +82,7 @@
     });
     if (name === 'dashboard') loadDashboard();
     if (name === 'products') { loadCategories(); loadProducts(); }
-    if (name === 'sales') loadProducts().then(loadSales);
+    if (name === 'sales') { if (!editingSaleId) refreshSaleDateMax(); loadProducts().then(loadSales); }
     if (name === 'categories') loadCategories();
   }
   document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => showView(t.dataset.view)));
@@ -561,14 +561,24 @@
     if (!products.length) { select.append(new Option('먼저 상품을 등록하세요', '')); return; }
     for (const p of products) select.append(new Option(`${p.name} (${won(p.sellingPrice)})`, p.id));
     if (current && products.some((p) => String(p.id) === current)) select.value = current;
-    else if (!editingSaleId) syncUnitPrice();
+    else if (!editingSaleId) syncFromProduct();
   }
 
-  function syncUnitPrice() {
-    const p = products.find((x) => String(x.id) === saleForm.elements.productId.value);
-    if (p) saleForm.elements.unitPrice.value = p.sellingPrice;
+  // 판매일 상한은 쓸 때마다 다시 잡는다. 앱을 자정 넘겨 켜 두면 로드 시점의 "오늘"이 어제가 되어 오늘 판매를 저장할 수 없다.
+  // 이미 저장된 미래 날짜 기록은 그 날짜까지 열어 둬야 고칠 수 있다.
+  function refreshSaleDateMax(recordDate) {
+    const today = todayISO();
+    saleForm.elements.saleDate.max = recordDate && recordDate > today ? recordDate : today;
   }
-  saleForm.elements.productId.addEventListener('change', syncUnitPrice);
+  saleForm.elements.saleDate.addEventListener('focus', () => { if (!editingSaleId) refreshSaleDateMax(); });
+
+  function syncFromProduct() {
+    const p = products.find((x) => String(x.id) === saleForm.elements.productId.value);
+    if (!p) return;
+    saleForm.elements.unitPrice.value = p.sellingPrice;
+    saleForm.elements.unitCost.value = p.costPrice;
+  }
+  saleForm.elements.productId.addEventListener('change', syncFromProduct);
 
   async function loadSales() {
     const fromInput = $('#sales-from'), toInput = $('#sales-to');
@@ -589,13 +599,14 @@
     if (seq !== salesSeq) return;
     const tbody = $('#sale-table tbody');
     clearRows(tbody);
-    if (!sales.length) { emptyRow(tbody, 7, '이 기간의 판매 기록이 없습니다.'); return; }
+    if (!sales.length) { emptyRow(tbody, 8, '이 기간의 판매 기록이 없습니다.'); return; }
     for (const s of sales) {
       const tr = tbody.insertRow();
       cell(tr, s.saleDate);
       cell(tr, s.productName);
       cell(tr, count(s.quantity), 'num');
       numCell(tr, s.unitPrice, won);
+      numCell(tr, s.unitCost, won);
       numCell(tr, s.revenue, won);
       numCell(tr, s.profit, won);
       cell(tr, '', 'row-actions').append(
@@ -608,7 +619,8 @@
   saleForm.addEventListener('submit', (e) => {
     e.preventDefault();
     const v = formValues(saleForm);
-    const body = { productId: Number(v.productId), saleDate: v.saleDate, quantity: Number(v.quantity), unitPrice: numOrNull(v.unitPrice) };
+    const body = { productId: Number(v.productId), saleDate: v.saleDate, quantity: Number(v.quantity),
+      unitPrice: numOrNull(v.unitPrice), unitCost: numOrNull(v.unitCost) };
     submitting(saleForm, async () => {
       const editing = editingSaleId;
       try {
@@ -628,9 +640,11 @@
     editingSaleId = s.id;
     $('#sale-form-title').textContent = `판매 기록 수정 · ${s.saleDate} ${s.productName}`;
     saleForm.elements.productId.value = s.productId;
+    refreshSaleDateMax(s.saleDate);
     saleForm.elements.saleDate.value = s.saleDate;
     saleForm.elements.quantity.value = s.quantity;
     saleForm.elements.unitPrice.value = s.unitPrice;
+    saleForm.elements.unitCost.value = s.unitCost;
     $('#sale-cancel').hidden = false;
     saleForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -638,10 +652,11 @@
   function resetSaleForm() {
     editingSaleId = null;
     saleForm.reset();
+    refreshSaleDateMax();
     saleForm.elements.saleDate.value = todayISO();
     $('#sale-form-title').textContent = '판매 기록 추가';
     $('#sale-cancel').hidden = true;
-    syncUnitPrice();
+    syncFromProduct();
   }
   $('#sale-cancel').addEventListener('click', resetSaleForm);
 
@@ -658,7 +673,7 @@
     loadSales();
   }
 
-  saleForm.elements.saleDate.max = todayISO(); // 미래 날짜로 저장하면 기본 화면에서 보이지 않는다
+  refreshSaleDateMax(); // 미래 날짜로 저장하면 기본 화면에서 보이지 않는다
   $('#sales-from').value = daysAgoISO(29);
   $('#sales-to').value = todayISO();
   ['#sales-from', '#sales-to'].forEach((sel) => $(sel).addEventListener('change', loadSales));
